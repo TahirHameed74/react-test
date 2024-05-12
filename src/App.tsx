@@ -1,63 +1,82 @@
-import React, { useState } from "react";
-import firebase from "./firebase";
-import { useCollection } from "react-firebase-hooks/firestore";
+import React, { useEffect, useState } from "react";
+import {
+	requestUserPermission,
+	messaging,
+	functions,
+	getToken,
+} from "./firebase";
 
-const Notifications: React.FC = () => {
-	const [notification, setNotification] = useState<string | null>(null);
+const NotificationSystem: React.FC = () => {
+	const [deviceToken, setDeviceToken] = useState<string | null>(null);
 
-	const sendNotification = (type: string) => {
-		//@ts-ignore
-		debugger;
-		const notificationsRef = firebase.firestore().collection("notifications");
+	useEffect(() => {
+		const fetchToken = async () => {
+			const token = await getToken();
+			setDeviceToken(token); // Store the token in the component
+		};
 
-		notificationsRef.add({
-			type: type,
-			read: false,
-			//@ts-ignore
-			timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+		fetchToken();
+	}, []);
+
+	useEffect(() => {
+		// Request permission for notifications
+		requestUserPermission();
+
+		const unsubscribe = messaging.onMessage((payload) => {
+			console.log("Message received. ", payload);
 		});
-	};
 
-	const [notificationsSnapshot, loading, error] = useCollection(
-		//@ts-ignore
-		firebase.firestore().collection("notifications").where("read", "==", false),
-		{
-			snapshotListenOptions: { includeMetadataChanges: true },
+		return () => {
+			unsubscribe();
+		};
+	}, []);
+
+	const sendNotification = async (title: string, body: string) => {
+		// device tokem from functions
+		const token = deviceToken;
+
+		const sendPushNotification = functions.httpsCallable(
+			"sendPushNotification"
+		);
+		try {
+			const result = await sendPushNotification({ token, title, body });
+			console.log(result);
+		} catch (error) {
+			console.error("Error sending notification:", error);
 		}
-	);
-
-	const markAsRead = async (id: string) => {
-		//@ts-ignore
-		await firebase.firestore().collection("notifications").doc(id).update({
-			read: true,
-		});
 	};
 
 	return (
 		<div>
-			{/* A simple Notification button */}
-			<button onClick={() => sendNotification("Type 1")}>Notify 1</button>
-			<button onClick={() => sendNotification("Type 2")}>Notify 2</button>
-			<button onClick={() => sendNotification("Type 3")}>Notify 3</button>
-			{/* Add a mapping over notificationsSnapshot to display notifications and
-			add an "onClick" event to mark them */}
-			<div>
-				{notificationsSnapshot &&
-					notificationsSnapshot.docs.map((doc) => {
-						const notification = doc.data();
-						const id = doc.id;
-						return (
-							<div
-								key={id}
-								onClick={() => markAsRead(id)}
-								style={{ cursor: "pointer" }}>
-								{notification.type} - Click to mark as read
-							</div>
-						);
-					})}
-			</div>
+			<button
+				onClick={() =>
+					sendNotification(
+						"Notification 1",
+						"This is the message for Notification 1"
+					)
+				}>
+				Notify 1
+			</button>
+			<button
+				onClick={() =>
+					sendNotification(
+						"Notification 2",
+						"This is the message for Notification 2"
+					)
+				}>
+				Notify 2
+			</button>
+			<button
+				onClick={() =>
+					sendNotification(
+						"Notification 3",
+						"This is the message for Notification 3"
+					)
+				}>
+				Notify 3
+			</button>
 		</div>
 	);
 };
 
-export default Notifications;
+export default NotificationSystem;
